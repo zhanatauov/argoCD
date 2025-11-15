@@ -8,5 +8,6 @@ for password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d | xargs printf "%s\n"
 
 # tetris
-kubectl port-forward --address 0.0.0.0 svc/argocd-server -n argocd 8081:80
+kubectl port-forward --address 0.0.0.0 svc/tetris-service 8081:80 -n default
+
 http://<VM_IP>:8081
