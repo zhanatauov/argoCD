@@ -7,9 +7,9 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/Pavlo-1992/step_final.git
+    repoURL: https://github.com/Pavlo-1992/argoCD.git
     targetRevision: main
-    path: k8s
+    path: argo_app
 
   destination:
     server: https://kubernetes.default.svc

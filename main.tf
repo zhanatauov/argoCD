@@ -1,20 +1,14 @@
 provider "aws" {
-  region = "eu-west-2"
+  region = "eu-central-1"
 }
-###############################
-#           SSH KEY           #
-###############################
-resource "aws_key_pair" "student_key" {
-  key_name   = "student_key"
-  public_key = file("~/.ssh/student_key.pub")
-}
+
 ###########################
 #           VPC           #
 ###########################
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   tags = {
-    Name = "student-vpc"
+    Name = "argo-vpc"
   }
 }
 
@@ -25,21 +19,9 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.0.0/25"
   map_public_ip_on_launch = true
-  availability_zone       = "eu-west-2a"
+  availability_zone       = "eu-central-1a"
   tags = {
-    Name = "student-public-subnet"
-  }
-}
-
-######################################
-#           Private Subnet           #
-######################################
-resource "aws_subnet" "private" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.0.128/25"
-  availability_zone = "eu-west-2b"
-  tags = {
-    Name = "student-private-subnet"
+    Name = "argo-public-subnet"
   }
 }
 
@@ -49,7 +31,7 @@ resource "aws_subnet" "private" {
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
   tags = {
-    Name = "student-igw"
+    Name = "argo-igw"
   }
 }
 
@@ -63,7 +45,7 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.igw.id
   }
   tags = {
-    Name = "student-public-rt"
+    Name = "argo-public-rt"
   }
 }
 
@@ -78,15 +60,22 @@ resource "aws_route_table_association" "public_assoc" {
 ######################################
 #           Security Group           #
 ######################################
-resource "aws_security_group" "web" {
+resource "aws_security_group" "allow_ssh_http" {
   vpc_id      = aws_vpc.main.id
-  name        = "student-web-sg"
+  name        = "allow_ssh_http"
   description = "Allow SSH and HTTP"
 
   ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8081
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -102,18 +91,27 @@ resource "aws_security_group" "web" {
 #            EC2 INSTANCE          #
 ####################################
 resource "aws_instance" "my_instance_ubuntu" {
-  ami                         = "ami-0a0ff88d0f3f85a14"
+  ami                         = "ami-004e960cde33f9146"
   instance_type               = "t3.large"
   subnet_id                   = aws_subnet.public.id
-  vpc_security_group_ids      = [aws_security_group.web.id]
-  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.allow_ssh_http.id]
+  key_name = "argo" 
 
-  key_name = aws_key_pair.student_key.key_name
+  user_data = file("user_data.sh")
 
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+    delete_on_termination = true
+  }
 
   tags = {
-    Name = "student-ubuntu"
+    Name = "argo-ubuntu"
   }
+  
+  provisioner "local-exec" {
+command = "echo Instance Public IP: ${self.public_ip}"
+  } 
 }
 
 
