@@ -2,7 +2,7 @@
 
 exec > /var/log/bootstrap.log 2>&1
 
-# Оновлення системи та необхідні пакети
+# Оновлення системи
 apt update && apt upgrade -y
 apt install -y curl wget apt-transport-https ca-certificates gnupg lsb-release net-tools git conntrack
 
@@ -24,7 +24,7 @@ install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
 install minikube-linux-amd64 /usr/local/bin/minikube
 
-# Створення systemd-сервісу для запуску Minikube
+# systemd-сервіс для запуску Minikube
 cat <<EOF > /etc/systemd/system/minikube-start.service
 [Unit]
 Description=Start Minikube Cluster
@@ -33,7 +33,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/minikube start --driver=docker --memory=3072mb --force
+ExecStart=/usr/local/bin/minikube start --driver=docker --memory=4096mb --wait=all --wait-timeout=5m
 RemainAfterExit=true
 User=root
 
@@ -46,26 +46,29 @@ systemctl daemon-reload
 systemctl enable minikube-start.service
 systemctl start minikube-start.service
 
-# Надання прав доступу до kube config
+# Надання прав доступу
 chown -R ubuntu:ubuntu /home/ubuntu/.kube /home/ubuntu/.minikube || true
 
-# Очікування запуску Kubernetes
+# Очікування Minikube
 until /usr/local/bin/minikube status | grep -q "host: Running"; do
   echo "Waiting for Minikube to be ready..."
   sleep 10
 done
 
+# Створення alias для kubectl
+echo 'alias kubectl="minikube kubectl --"' >> /home/ubuntu/.bashrc
+
 # Встановлення ArgoCD
-/usr/local/bin/kubectl create namespace argocd
+/usr/local/bin/kubectl create namespace argocd || true
 /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-# Очікування запуску ArgoCD
+# Очікування
 sleep 90
 
-# Деплой ArgoCD Application із GitHub
+# Деплой ArgoCD Application
 /usr/local/bin/kubectl apply -f https://raw.githubusercontent.com/Pavlo-1992/argoCD/main/argo_app/argocd-application.yaml -n argocd
 
-# Створення systemd service для port-forward
+# Systemd-сервіс для port-forward ArgoCD
 cat <<EOF > /etc/systemd/system/argocd-port.service
 [Unit]
 Description=Port forward ArgoCD
@@ -73,7 +76,7 @@ After=network.target
 
 [Service]
 User=ubuntu
-ExecStart=/usr/local/bin/kubectl port-forward svc/argocd-server -n argocd 8080:80
+ExecStart=/usr/local/bin/kubectl port-forward svc/argocd-server -n argocd 8080:443
 Restart=always
 RestartSec=10
 
@@ -81,14 +84,15 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+# Systemd-сервіс для port-forward myapp
 cat <<EOF > /etc/systemd/system/app-port.service
 [Unit]
-Description=Port forward Tetris app
+Description=Port forward myapp-service
 After=network.target
 
 [Service]
 User=ubuntu
-ExecStart=/usr/local/bin/kubectl port-forward svc/tetris-service -n default 8081:80
+ExecStart=/usr/local/bin/kubectl port-forward svc/myapp-service -n app 8081:80
 Restart=always
 RestartSec=10
 
@@ -96,14 +100,8 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Увімкнення та запуск сервісів
 systemctl enable argocd-port.service
 systemctl enable app-port.service
 systemctl start argocd-port.service
 systemctl start app-port.service
-
-# Додавання alias до .bashrc
-echo 'alias kubectl="minikube kubectl --"' >> /home/ubuntu/.bashrc
-
-# Готово
 

@@ -60,10 +60,10 @@ resource "aws_route_table_association" "public_assoc" {
 ######################################
 #           Security Group           #
 ######################################
-resource "aws_security_group" "allow_ssh_http" {
+resource "aws_security_group" "allow_ssh_http_nodeport" {
   vpc_id      = aws_vpc.main.id
-  name        = "allow_ssh_http"
-  description = "Allow SSH and HTTP"
+  name        = "allow_ssh_http_nodeport"
+  description = "Allow SSH, HTTP, and NodePort"
 
   ingress {
     from_port   = 22
@@ -77,6 +77,14 @@ resource "aws_security_group" "allow_ssh_http" {
     to_port     = 8081
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow NodePort for myapp-service"
   }
 
   egress {
@@ -94,7 +102,7 @@ resource "aws_instance" "my_instance_ubuntu" {
   ami                         = "ami-004e960cde33f9146"
   instance_type               = "t3.large"
   subnet_id                   = aws_subnet.public.id
-  vpc_security_group_ids      = [aws_security_group.allow_ssh_http.id]
+  vpc_security_group_ids      = [aws_security_group.allow_ssh_http_nodeport.id]
   key_name = "argo" 
 
   user_data = file("user_data.sh")
