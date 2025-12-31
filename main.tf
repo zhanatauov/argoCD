@@ -1,126 +1,156 @@
+# =========================
+# Providers
+# =========================
 provider "aws" {
-  region = "eu-central-1"
+  region = var.region
 }
 
-###########################
-#           VPC           #
-###########################
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
-  tags = {
-    Name = "argo-vpc"
-  }
+data "aws_eks_cluster" "this" {
+  name = module.eks.cluster_name
 }
 
-#####################################
-#           Public Subnet           #
-#####################################
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.0.0/25"
-  map_public_ip_on_launch = true
-  availability_zone       = "eu-central-1a"
-  tags = {
-    Name = "argo-public-subnet"
-  }
+data "aws_eks_cluster_auth" "this" {
+  name = module.eks.cluster_name
 }
 
-########################################
-#           Internet Gateway           #
-########################################
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
-  tags = {
-    Name = "argo-igw"
+provider "kubernetes" {
+  host                   = data.aws_eks_cluster.this.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.this.token
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = data.aws_eks_cluster.this.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+    token                  = data.aws_eks_cluster_auth.this.token
   }
 }
 
-###################################
-#           Route Table           #
-###################################
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-  }
-  tags = {
-    Name = "argo-public-rt"
+# =========================
+# AZs
+# =========================
+data "aws_availability_zones" "available" {
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
   }
 }
 
-###############################################
-#           Route Table Association           #
-###############################################
-resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
+# =========================
+# Random suffix
+# =========================
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
 }
 
-######################################
-#           Security Group           #
-######################################
-resource "aws_security_group" "allow_ssh_http_nodeport" {
-  vpc_id      = aws_vpc.main.id
-  name        = "allow_ssh_http_nodeport"
-  description = "Allow SSH, HTTP, and NodePort"
+locals {
+  cluster_name = "education-eks-${random_string.suffix.result}"
+}
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+# =========================
+# VPC
+# =========================
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.8.1"
+
+  name = "education-vpc"
+  cidr = "10.0.0.0/16"
+
+  azs             = slice(data.aws_availability_zones.available.names, 0, 3)
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
+  enable_dns_hostnames = true
+
+  public_subnet_tags = {
+    "kubernetes.io/role/elb" = 1
   }
 
-  ingress {
-    from_port   = 8080
-    to_port     = 8081
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow NodePort for myapp-service"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  private_subnet_tags = {
+    "kubernetes.io/role/internal-elb" = 1
   }
 }
 
-####################################
-#            EC2 INSTANCE          #
-####################################
-resource "aws_instance" "my_instance_ubuntu" {
-  ami                         = "ami-004e960cde33f9146"
-  instance_type               = "t3.large"
-  subnet_id                   = aws_subnet.public.id
-  vpc_security_group_ids      = [aws_security_group.allow_ssh_http_nodeport.id]
-  key_name = "argo" 
+# =========================
+# EKS
+# =========================
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "20.8.5"
 
-  user_data = file("user_data.sh")
+  cluster_name    = local.cluster_name
+  cluster_version = "1.29"
 
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-    delete_on_termination = true
+  cluster_endpoint_public_access           = true
+  enable_cluster_creator_admin_permissions = true
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  eks_managed_node_group_defaults = {
+    ami_type = "AL2_x86_64"
   }
 
-  tags = {
-    Name = "argo-ubuntu"
+  eks_managed_node_groups = {
+    general = {
+      name           = "general"
+      instance_types = ["t3.small"]
+      min_size       = 2
+      max_size       = 2
+      desired_size   = 2
+    }
   }
-  
-  provisioner "local-exec" {
-command = "echo Instance Public IP: ${self.public_ip}"
-  } 
 }
 
+# =========================
+# Ingress NGINX
+# =========================
+resource "helm_release" "nginx_ingress" {
+  name             = "nginx-ingress"
+  repository       = "https://kubernetes.github.io/ingress-nginx"
+  chart            = "ingress-nginx"
+  namespace        = "ingress-nginx"
+  create_namespace = true
+  version          = "4.9.0"
+
+  values = [yamlencode({
+    controller = {
+      publishService = {
+        enabled = true
+      }
+    }
+  })]
+
+  depends_on = [helm_release.nginx_ingress]
+}
+
+# =========================
+# Argo CD 
+# =========================
+resource "helm_release" "argocd" {
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
+  version    = "5.46.7"
+  namespace  = "argocd"
+  create_namespace = true
+
+  values = [yamlencode({
+    server = {
+      extraArgs = [
+        "--rootpath=/argo",
+        "--basehref=/argo",
+        "--insecure"
+      ]
+    }
+  })]
+
+  depends_on = [helm_release.nginx_ingress]
+}
 
 
