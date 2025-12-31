@@ -15,6 +15,6 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: savanchukpavlo/step_5_backend:test
+          image: savanchukpavlo/step_5_backend:latest
           ports:
             - containerPort: 8080
