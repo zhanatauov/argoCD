@@ -2,21 +2,6 @@ ArgoCD AWS EKS Deployment Project
 
 This project automates the creation of AWS infrastructure with a Kubernetes cluster (EKS), installs Argo CD, and deploys a simple Python application with CI/CD support.
 
-📁 Project Structure
-argoCD/
-├── app/                      # Simple Python application and Dockerfile
-│   └── app.py
-│   └── Dockerfile
-├── argo_app/                 # Kubernetes YAML manifests
-│   └── deployment.yaml
-│   └── service.yaml
-│   └── ingress-app.yaml
-│   └── ingress-argo.yaml
-├── argocd-application.yaml   # Argo CD Application manifest
-├── Terraform files           # EKS, VPC, Argo CD, nginx-ingress provisioning
-│   └── *.tf
-└── README.md                 # Technical documentation
-
 🚀 How to Deploy the Cluster and Argo CD
 1. Preparation
 
