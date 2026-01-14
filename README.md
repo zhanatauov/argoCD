@@ -51,7 +51,7 @@ password: $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath
 
 Modifying the Docker image in deployment.yaml (e.g., from :latest to :test) will automatically trigger a redeployment via Argo CD.
 
-image: savanchukpavlo/step_5_backend:test
+image: zhanatauov25/argocd:test
 
 📌 Useful Commands
 kubectl get all -n app
