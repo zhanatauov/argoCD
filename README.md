@@ -5,7 +5,7 @@ This project automates the creation of AWS infrastructure with a Kubernetes clus
 🚀 How to Deploy the Cluster and Argo CD
 1. Preparation
 
-Create a Docker repository on Docker Hub and push the image savanchukpavlo/step_5_backend:test.
+Create a Docker repository on Docker Hub and push the image zhanatauov25/argocd:test.
 
 Clone the repository:
 
