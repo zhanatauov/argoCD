@@ -9,7 +9,7 @@ Create a Docker repository on Docker Hub and push the image savanchukpavlo/step_
 
 Clone the repository:
 
-git clone [https://github.com/Pavlo-1992/argoCD.git](https://github.com/zhanatauov/argoCD.git)
+git clone (https://github.com/zhanatauov/argoCD.git)
 cd argoCD
 
 
