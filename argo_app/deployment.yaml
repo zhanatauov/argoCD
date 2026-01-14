@@ -15,6 +15,6 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: zhanatauov25/argocd:test
+          image: zhanatauov25/argocd:v2
           ports:
             - containerPort: 8080
